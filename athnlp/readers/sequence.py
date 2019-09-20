@@ -41,3 +41,17 @@ class Sequence(object):
             rep += "%s/%s " % (self.dictionary.x_dict.get_label_name(xi),
                                self.dictionary.y_dict.get_label_name(yi))
         return rep
+
+    def get_tag_word_tuples(self):
+        """
+        Get this sequence as a list of word-tag-tuples
+
+        :return: list of word-tag-tuples representing the sequence
+        :rtype: list[(str, str)]
+        """
+        return [
+            (
+                self.dictionary.x_dict.get_label_name(xi),
+                self.dictionary.y_dict.get_label_name(self.y[i])
+            ) for i, xi in enumerate(self.x)
+        ]
