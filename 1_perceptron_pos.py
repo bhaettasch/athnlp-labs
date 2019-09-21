@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from athnlp.readers.brown_pos_corpus import BrownPosTag
 
-MAX_EPOCHS_WITHOUT_IMPROVEMENTS = 3
+MAX_EPOCHS_WITHOUT_IMPROVEMENTS = 5
 
 
 class POSTagger:
@@ -175,12 +175,26 @@ class UnigramPerceptronPOSTagger(POSTagger):
         return best_label
 
 
+class BOWPerceptronPOSTagger(UnigramPerceptronPOSTagger):
+
+    def __init__(self, corpus):
+        super().__init__(corpus)
+        self.name = "Bag of words perceptron POS tagger"
+
+    def _get_word_feature(self, word, sent):
+        # Add all words of a sentence to the list of features (and mark them as context)
+        feature = [f"context_{w}" for w in sent.x]
+        # Add the word search for multiple times to give them a higher weight
+        feature.extend([word] * len(feature))
+        return feature
+
+
 if __name__ == "__main__":
     print("Loading corpus")
     corpus = BrownPosTag()
 
     print("Testing models")
-    for tagger_type in [MajorityClassPOSTagger, UnigramPerceptronPOSTagger]:
+    for tagger_type in [MajorityClassPOSTagger, UnigramPerceptronPOSTagger, BOWPerceptronPOSTagger]:
         tagger = tagger_type(corpus)
         print(f"\n\n==={tagger.name}===\n")
         tagger.train()
