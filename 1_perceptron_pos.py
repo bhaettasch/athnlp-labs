@@ -1,12 +1,14 @@
 import random
 import abc
+from copy import deepcopy
 
+import math
 from nltk import ConditionalFreqDist
 from tqdm import tqdm
 
 from athnlp.readers.brown_pos_corpus import BrownPosTag
 
-EPOCHS = 3
+MAX_EPOCHS_WITHOUT_IMPROVEMENTS = 3
 
 
 class POSTagger:
@@ -108,6 +110,7 @@ class UnigramPerceptronPOSTagger(POSTagger):
         super().__init__()
         self.name = "Unigram Perceptron POS Tagger"
         self.weights_per_label = {}
+        self.weights_per_label_best = {}
 
     def train(self):
         """
@@ -119,12 +122,22 @@ class UnigramPerceptronPOSTagger(POSTagger):
             self.weights_per_label[tag] = {}
 
         print("Training perceptron")
-        mistakes = 0
-        for epoch in range(EPOCHS):
+        mistakes_best = math.inf
+        epochs_without_improvements = 0
+        epoch = 0
+        # Train until no improvements happen anymore
+        while epochs_without_improvements < MAX_EPOCHS_WITHOUT_IMPROVEMENTS:
+            # Multiple epochs are only useful when you change something (shuffle the learning order)
             random.shuffle(self.corpus.train)
+            epoch += 1
+            mistakes = 0
+            count_examples = 0
+
+            # Loop over all examples and learn from them
             for sent in tqdm(self.corpus.train, desc=f"Epoch {epoch}"):
                 for (word, tag) in sent.get_tag_word_tuples():
-                    feature = self._get_word_feature(word, None)
+                    count_examples += 1
+                    feature = self._get_word_feature(word, sent)
                     # Get prediction
                     pred_tag = self._get_prediction(feature)
                     # If there was a misprediction
@@ -134,6 +147,17 @@ class UnigramPerceptronPOSTagger(POSTagger):
                             self.weights_per_label[tag][f] = self.weights_per_label[tag].get(f, 0) + 1
                             self.weights_per_label[pred_tag][f] = self.weights_per_label[tag].get(f, 0) - 1
                         mistakes += 1
+
+            # Break condition based upon last changes to the score
+            print(f"Error: {(mistakes/count_examples*100):3.2f} %")
+            if mistakes < mistakes_best:
+                self.weights_per_label_best = deepcopy(self.weights_per_label)
+                epochs_without_improvements = 0
+                mistakes_best = mistakes
+            else:
+                epochs_without_improvements += 1
+
+            self.weights_per_label = self.weights_per_label_best
 
     def _get_word_feature(self, word, sent):
         return [word]
