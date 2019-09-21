@@ -1,20 +1,13 @@
-"""
-input: labeled data D
-initialize w(0) = 0
-initialize k = 0 (number of mistakes)
-repeat
-get new training example (xi ; yi ) 2 D
-predict byi = argmaxy2Y w(k)  (xi ; y)
-if byi 6= yi then
-update w(k+1) = w(k) + (xi ; yi ) 􀀀 (xi ; byi )
-increment k
-end if
-until maximum number of epochs
-output: model weights w
-"""
+import random
+
+import numpy as np
+
 from nltk import ConditionalFreqDist
+from tqdm import tqdm
 
 from athnlp.readers.brown_pos_corpus import BrownPosTag
+
+EPOCHS = 2
 
 
 class PerceptronPOSTagger:
@@ -28,25 +21,72 @@ class PerceptronPOSTagger:
         """
         self.corpus = corpus
         self.pos_tags = corpus.dictionary.y_dict.names
+        self.vocab_size = len(corpus.dictionary.x_dict)
         self.baseline_cfd = None
+        self.weights_per_label = {}
 
-    def _get_word_representation(self, word):
+    def _get_word_index(self, word):
         """
-        Get binary number/vector representation for word
+        Get index for word
 
         :param word: word to represent
         :type word: str
-        :return: word representation suitable for further processing
-        :rtype: ?
+        :return: index for further processing
+        :rtype: int
         """
-        # TODO Tranfer into encoded format instead of int
-        return self.corpus.dictionary.y_dict.get_label_id(word)
+        return self.corpus.dictionary.x_dict.get_label_id(word)
 
     def train(self):
-        pass
+        # Init weight list/vector (with zeros for every word) per label
+        for tag in self.corpus.dictionary.y_dict.names:
+            self.weights_per_label[tag] = np.zeros(self.vocab_size)
+
+        print("Training perceptron")
+        mistakes = 0
+        for epoch in range(EPOCHS):
+            random.shuffle(self.corpus.train)
+            for sent in tqdm(self.corpus.train, desc=f"Epoch {epoch}"):
+                for (word, tag) in sent.get_tag_word_tuples():
+                    feature = self._get_word_feature(word)
+                    # Get prediction
+                    pred_tag = self._get_prediction(feature, self.weights_per_label)
+                    # If there was a missprediction
+                    if pred_tag != tag:
+                        # Update both affected weights
+                        self.weights_per_label[tag] = self.weights_per_label[tag] + feature
+                        self.weights_per_label[pred_tag] = self.weights_per_label[pred_tag] - feature
+                        mistakes += 1
+
+    def _get_word_feature(self, word):
+        # Represent word as vector
+        feature = np.zeros(self.vocab_size)
+        feature[self._get_word_index(word)] = 1
+        return feature
+
+    def _get_prediction(self, feature, model_weights):
+        best_label = ""
+        best_score = -1
+
+        for (label, weights) in model_weights.items():
+            score = sum(weights * feature)
+            if score > best_score:
+                best_label = label
+                best_score = score
+
+        return best_label
 
     def evaluate(self):
-        pass
+        total = 0
+        correct = 0
+        for sent in tqdm(self.corpus.dev, desc="Evaluating"):
+            for (word, gold_tag) in sent.get_tag_word_tuples():
+                total += 1
+                predicted_tag = self._get_prediction(self._get_word_feature(word), self.weights_per_label)
+                if predicted_tag == gold_tag:
+                    correct += 1
+
+        baseline_accuracy = correct / total * 100
+        print(f"Simple Perceptron Accuracy: {baseline_accuracy:3.2f}%")
 
     def train_baseline(self):
         """
@@ -56,7 +96,6 @@ class PerceptronPOSTagger:
         :return:
         :rtype:
         """
-        # sample_sent = [('Merger', 'noun'), ('proposed', 'verb')]
         self.baseline_cfd = ConditionalFreqDist(tp for seq_list in self.corpus.train for tp in seq_list.get_tag_word_tuples())
 
     def _get_tag_for_word_baseline(self, word):
@@ -68,7 +107,7 @@ class PerceptronPOSTagger:
         """
         total = 0
         correct = 0
-        for sent in self.corpus.dev:
+        for sent in tqdm(self.corpus.dev, desc="Evaluating"):
             for (word, gold_tag) in sent.get_tag_word_tuples():
                 total += 1
                 # Known word?
