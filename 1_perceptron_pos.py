@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from athnlp.readers.brown_pos_corpus import BrownPosTag
 
-EPOCHS = 2
+EPOCHS = 3
 
 
 class PerceptronPOSTagger:
@@ -25,21 +25,14 @@ class PerceptronPOSTagger:
         self.baseline_cfd = None
         self.weights_per_label = {}
 
-    def _get_word_index(self, word):
-        """
-        Get index for word
-
-        :param word: word to represent
-        :type word: str
-        :return: index for further processing
-        :rtype: int
-        """
-        return self.corpus.dictionary.x_dict.get_label_id(word)
-
     def train(self):
-        # Init weight list/vector (with zeros for every word) per label
+        """
+        Train POS Tagger
+        """
+
+        # Init weight list/vector (no weights for anything at first)
         for tag in self.corpus.dictionary.y_dict.names:
-            self.weights_per_label[tag] = np.zeros(self.vocab_size)
+            self.weights_per_label[tag] = {}
 
         print("Training perceptron")
         mistakes = 0
@@ -50,25 +43,23 @@ class PerceptronPOSTagger:
                     feature = self._get_word_feature(word)
                     # Get prediction
                     pred_tag = self._get_prediction(feature, self.weights_per_label)
-                    # If there was a missprediction
+                    # If there was a misprediction
                     if pred_tag != tag:
                         # Update both affected weights
-                        self.weights_per_label[tag] = self.weights_per_label[tag] + feature
-                        self.weights_per_label[pred_tag] = self.weights_per_label[pred_tag] - feature
+                        for f in feature:
+                            self.weights_per_label[tag][f] = self.weights_per_label[tag].get(f, 0) + 1
+                            self.weights_per_label[pred_tag][f] = self.weights_per_label[tag].get(f, 0) - 1
                         mistakes += 1
 
     def _get_word_feature(self, word):
-        # Represent word as vector
-        feature = np.zeros(self.vocab_size)
-        feature[self._get_word_index(word)] = 1
-        return feature
+        return [word]
 
     def _get_prediction(self, feature, model_weights):
         best_label = ""
         best_score = -1
 
         for (label, weights) in model_weights.items():
-            score = sum(weights * feature)
+            score = sum(weights.get(f, 0) for f in feature)
             if score > best_score:
                 best_label = label
                 best_score = score
